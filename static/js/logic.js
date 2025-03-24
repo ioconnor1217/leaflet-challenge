@@ -1,84 +1,205 @@
-// Create the 'basemap' tile layer that will be the background of our map.
+// Make a map object
+let myMap = L.map("map", {
+  center: [44.967243, -103.771556],
+  zoom: 5,
+});
 
+// Create a satellite map background layer on top of the map object
+// Make sure to define this one as the default map
+let baseLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+	attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+});
 
-// OPTIONAL: Step 2
-// Create the 'street' tile layer as a second background of the map
+// Add a dark theme map background 
+let darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+	attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+	subdomains: 'abcd',
+	maxZoom: 20
+});
 
+// Add a simpler background theme to the map options
+let basicLayer = L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', {
+	attribution: 'Tiles courtesy of the <a href="https://usgs.gov/">U.S. Geological Survey</a>',
+  maxZoom: 20
+});
 
-// Create the map object with center and zoom options.
+// Add the satelite base layer to the baseMap object for default map population
+baseLayer.addTo(myMap);
 
+// Create an object to hold the different layers
+let maps = {
+  "Satellite": baseLayer,
+  "Dark Map": darkLayer,
+  "Basic Map": basicLayer
+}
 
-// Then add the 'basemap' tile layer to the map.
-
-// OPTIONAL: Step 2
 // Create the layer groups, base maps, and overlays for our two sets of data, earthquakes and tectonic_plates.
-// Add a control to the map that will allow the user to change which layers are visible.
+let earthquakeLayer = L.layerGroup();
+let tectonicPlatesLayer = L.layerGroup();
 
+// Add a control to the map that will allow the user to change which layers are visible.
+let overlayMaps = {
+  "Earthquakes": earthquakeLayer,
+  "Tectonic Plates": tectonicPlatesLayer
+};
+
+// Add both the map background options and the overlaying data plots in a control panel
+L.control.layers(maps, overlayMaps, {collapsed: false}).addTo(myMap);
 
 // Make a request that retrieves the earthquake geoJSON data.
 d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson").then(function (data) {
 
-  // This function returns the style data for each of the earthquakes we plot on
-  // the map. Pass the magnitude and depth of the earthquake into two separate functions
-  // to calculate the color and radius.
+  // Make a function that both pulls the relevent depth and magnitude for size and color, and plots each earthquake 
   function styleInfo(feature) {
-
+    return{
+      opacity: 1,
+      fillOpacity: 1,
+      fillColor: getColor(feature.geometry.coordinates[2]),
+      color: "#000000",
+      radius: getRadius(feature.properties.mag),
+      stroke: true,
+      weight: 1
+    };
   }
 
-  // This function determines the color of the marker based on the depth of the earthquake.
+  // Make a function to determine the color of the point being plotted
   function getColor(depth) {
-
+    if (depth > 90) return "#990000";
+    if (depth > 70) return "#cc3300";
+    if (depth > 50) return "#ff6600";
+    if (depth > 30) return "#ffcc00";
+    if (depth > 10) return "#ccff33";
+    return "#99ff99";
   }
 
-  // This function determines the radius of the earthquake marker based on its magnitude.
+  // Create a function to determine the size of the circle being plotted
   function getRadius(magnitude) {
 
+    // Make sure to multiply the size for a visually easier way of discerning the data
+    return magnitude > 0 ? magnitude * 3 : 1;
   }
 
   // Add a GeoJSON layer to the map once the file is loaded.
   L.geoJson(data, {
-    // Turn each feature into a circleMarker on the map.
-    pointToLayer: function (feature, latlng) {
 
+    // Turn each feature from the dataset into a circleMarker on the map.
+    pointToLayer: function (feature, latlng) {
+      return L.circleMarker(latlng);
     },
+  
     // Set the style for each circleMarker using our styleInfo function.
     style: styleInfo,
+  
     // Create a popup for each marker to display the magnitude and location of the earthquake after the marker has been created and styled
     onEachFeature: function (feature, layer) {
-
+      layer.bindPopup(
+        `<strong>Location:</storng> ${feature.properties.place}<br>
+        <storng>Magnitude:</strong> ${feature.properties.mag}<br>
+        <strong>Depth:</strong> ${feature.geometry.coordinates[2]} km`
+      );
     }
-  // OPTIONAL: Step 2
-  // Add the data to the earthquake layer instead of directly to the map.
-  }).addTo(map);
+  }).addTo(earthquakeLayer);
+
+  // Add this layer to the map object
+  earthquakeLayer.addTo(myMap);
 
   // Create a legend control object.
   let legend = L.control({
     position: "bottomright"
   });
 
-  // Then add all the details for the legend
+  // Add both the depth and magnitude legends to the legend object
   legend.onAdd = function () {
     let div = L.DomUtil.create("div", "info legend");
 
-    // Initialize depth intervals and colors for the legend
+    // Apply background styling to the legend to make it pop
+    div.style.background = "#cccccc";
+    div.style.padding = "8px";
+    div.style.border = "1px solid black";
+    div.style.borderRadius = "5px";
+    div.style.fontSize = "12px";
+    div.style.height = "auto";
+    div.style.display = "flex"; 
+    div.style.flexDirection = "row";
+    div.style.gap = "20px";  
 
+    // Initialize depth intervals
+    let depths = [-10, 10, 30, 50, 70, 90]; // The example picture starts at -10
+
+    // Create a div to contain the depth legend
+    let depthDiv = document.createElement("div");
+    depthDiv.style.display = "flex";
+    depthDiv.style.flexDirection = "column";
+    depthDiv.style.alignItems = "start"; 
+
+    // Give the depth section a title for this part of the legend
+    let depthTitle = document.createElement("div");
+    depthTitle.innerHTML = "<strong>Depth (km)</strong>";
+    depthTitle.style.marginBottom = "5px";
+    depthTitle.style.fontSize = "15px";
+    depthDiv.appendChild(depthTitle);
 
     // Loop through our depth intervals to generate a label with a colored square for each interval.
+    for (let i = 0; i < depths.length; i++) {
+        let depthItem = document.createElement("div");
+        depthItem.innerHTML = 
+            // Call the getColor function while styling the background color
+            `<i style="background: ${getColor(depths[i])}; width: 100%; height: 15px; display: inline-block; margin-right: 5px;"></i>` 
+            + depths[i] + (depths[i + 1] ? " &ndash; " + depths[i + 1] : "+");
+        depthDiv.appendChild(depthItem);
+    }
 
+    // Now, repeat the same process for the magnitudes legend
+    // Initialize magnitudes intervals
+    let magnitudes = [5.4, 5.5, 6.0, 6.1, 6.9, 7.0, 7.9, 8.0]; // I got my intervals from https://www.mtu.edu/geo/community/seismology/learn/earthquake-measure/magnitude/
+
+    // Create another div for flexDirection
+    let magnitudeDiv = document.createElement("div");
+    magnitudeDiv.style.display = "flex";
+    magnitudeDiv.style.flexDirection = "column";
+    magnitudeDiv.style.alignItems = "start"; 
+
+    // Give the magnitude section a title
+    let magnitudeTitle = document.createElement("div");
+    magnitudeTitle.innerHTML = "<strong>Magnitude</strong>";
+    magnitudeTitle.style.marginBottom = "5px"; 
+    magnitudeTitle.style.fontSize = "15px";
+    magnitudeDiv.appendChild(magnitudeTitle);
+
+    // Loop through our magnitude intervals to generate circles sizes for each interval
+    for (let i = 0; i < magnitudes.length; i++) {
+        let magnitudeItem = document.createElement("div");
+        magnitudeItem.innerHTML = 
+            // Make sure to multiply the variables by the same amount found in the getRadius function
+            `<i style="width: ${Math.min(magnitudes[i] * 3, 30)}px; height: ${Math.min(magnitudes[i] * 3, 30)}px; background: black; border-radius: 50%; display: inline-block; margin-right: 5px;"></i>` 
+            + magnitudes[i];
+        magnitudeDiv.appendChild(magnitudeItem);
+    }
+
+    // Add the child divs to the parent div
+    div.appendChild(depthDiv);
+    div.appendChild(magnitudeDiv);
 
     return div;
   };
 
-  // Finally, add the legend to the map.
 
+  // Add the legend to the map object
+  legend.addTo(myMap);
 
-  // OPTIONAL: Step 2
-  // Make a request to get our Tectonic Plate geoJSON data.
-  d3.json("https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json").then(function (plate_data) {
-    // Save the geoJSON data, along with style information, to the tectonic_plates layer.
-
-
-    // Then add the tectonic_plates layer to the map.
-
-  });
 });
+
+// Make a request to get our Tectonic Plate geoJSON data.
+d3.json("https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json").then(function (plate_data) {
+
+  // Use the geoJSON data to create a new layer to add to the map
+  L.geoJson(plate_data, {
+    color: "orange",
+    weight: 2
+  
+  // Then add this layer to the value that I already created
+  }).addTo(tectonicPlatesLayer);
+
+});
+
+
